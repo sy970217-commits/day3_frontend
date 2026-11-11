@@ -29,6 +29,15 @@
   .r b{font-weight:600} .mini{font-size:11px;padding:1px 8px;border-radius:99px;color:#fff;margin-left:6px;background:var(--c,var(--g0))}
   .g1{--c:var(--g1)}.g2{--c:var(--g2)}.g3{--c:var(--g3)}.g4{--c:var(--g4)}.g0{--c:var(--g0)}
   .msg{padding:30px;text-align:center;color:var(--sub);grid-column:1/-1}.err{color:var(--g4)}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-top:16px}
+  .ph{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px} #fit{font-size:12px;color:var(--sub)}
+  #chart svg{width:100%;height:auto;display:block} #chart .msg{padding:24px}
+  .legend{display:flex;gap:14px;font-size:12px;color:var(--sub);flex-wrap:wrap;margin-top:6px}
+  .legend i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:5px;vertical-align:middle}
+  .legend i.dash{background:repeating-linear-gradient(90deg,var(--sub) 0 4px,transparent 4px 7px)}
+  .fcst{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .fcst div{border:1px solid var(--line);border-radius:10px;padding:6px 10px;font-size:12px;color:var(--sub)}
+  .fcst b{display:block;font-size:14px;color:var(--text)}
   footer{margin-top:28px;font-size:12px;color:var(--sub);text-align:center}
   @media (max-width:560px){.hero{grid-template-columns:1fr}.big .v{font-size:36px}}
 </style>
@@ -40,6 +49,12 @@
     <div class="ctl"><select id="sido" aria-label="시도 선택"></select><button id="reload">새로고침</button></div>
   </header>
   <section class="hero" id="hero"></section>
+  <section class="panel">
+    <div class="ph"><b>📈 시간별 추이 · 선형회귀 예측</b><span id="fit"></span></div>
+    <div id="chart"><div class="msg">불러오는 중...</div></div>
+    <div class="legend"><span><i style="background:var(--accent)"></i>PM10 실측</span><span><i style="background:var(--g3)"></i>PM2.5 실측</span><span><i class="dash"></i>예측(점선)</span></div>
+    <div id="fcst" class="fcst"></div>
+  </section>
   <div class="meta"><span id="count"></span><span id="updated"></span></div>
   <div class="grid" id="grid"></div>
   <footer>데이터 출처: 공공데이터포털 한국환경공단_에어코리아_대기오염정보</footer>
@@ -76,7 +91,47 @@ async function load(){
       <div class="r"><span>이산화질소 NO₂</span><b>${esc(i.no2)}</b></div></div>`}).join("")||'<div class="msg">데이터가 없습니다.</div>';
   }catch(e){$("hero").innerHTML="";$("grid").innerHTML=`<div class="msg err">불러오지 못했습니다: ${esc(e.message)}<br><small>백엔드: ${esc(window.API_BASE)}</small></div>`}
 }
-$("reload").onclick=load;$("sido").onchange=load;load();
+async function getJson(path){
+  const r=await fetch(window.API_BASE+path);
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(j.detail||r.status);
+  return j;
+}
+const cssv=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function line(pts,x,y,color,dash){
+  if(!pts.length) return "";
+  return `<polyline fill="none" stroke="${color}" stroke-width="2.2" ${dash?'stroke-dasharray="6 5"':""} points="${pts.map(p=>x(p.t)+","+y(p.v)).join(" ")}"/>`+
+    pts.map(p=>`<circle cx="${x(p.t)}" cy="${y(p.v)}" r="${dash?2.5:2}" fill="${dash?"none":color}" stroke="${color}"/>`).join("");
+}
+async function loadTrend(){
+  const s=encodeURIComponent($("sido").value);
+  $("fcst").innerHTML="";$("fit").textContent="";
+  try{
+    const [h,p]=await Promise.all([getJson(`/air/history?sido=${s}&hours=72`),getJson(`/air/predict?sido=${s}&hours=72&ahead=6`)]);
+    const T=x=>new Date(x.replace(" ","T")).getTime();
+    const hist=k=>h.filter(r=>r[k]!=null).map(r=>({t:T(r.time),v:r[k]}));
+    const fc=k=>p.predictions[k]?p.predictions[k].forecast.map(f=>({t:T(f.time),v:f.value})):[];
+    const a10=hist("pm10"),a25=hist("pm25"),f10=fc("pm10"),f25=fc("pm25");
+    if(a10.length+a25.length<2){
+      $("chart").innerHTML=`<div class="msg">저장된 데이터 ${h.length}건 — 서버가 30분마다 자동으로 쌓고 있습니다. 2개 시각 이상 쌓이면 그래프가 나타나고, 3개 이상이면 예측이 계산됩니다.</div>`;return;
+    }
+    const all=[...a10,...a25,...f10,...f25];
+    const W=720,H=260,L=40,R=12,Tp=12,B=28;
+    const t0=Math.min(...all.map(d=>d.t)),t1=Math.max(...all.map(d=>d.t));
+    const vmax=Math.max(10,Math.ceil(Math.max(...all.map(d=>d.v))/10)*10);
+    const x=t=>L+(t1===t0?0:(t-t0)/(t1-t0))*(W-L-R), y=v=>Tp+(1-v/vmax)*(H-Tp-B);
+    const grid=[0,.25,.5,.75,1].map(f=>{const v=Math.round(vmax*f),yy=y(v);return `<line x1="${L}" x2="${W-R}" y1="${yy}" y2="${yy}" stroke="${cssv("--line")}"/><text x="${L-6}" y="${yy+4}" text-anchor="end" font-size="11" fill="${cssv("--sub")}">${v}</text>`}).join("");
+    const ticks=[0,.5,1].map(f=>{const t=t0+(t1-t0)*f,d=new Date(t);return `<text x="${x(t)}" y="${H-8}" text-anchor="${f===0?"start":f===1?"end":"middle"}" font-size="11" fill="${cssv("--sub")}">${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,"0")}시</text>`}).join("");
+    const nowX=a10.length||a25.length?x(Math.max(...[...a10,...a25].map(d=>d.t))):null;
+    $("chart").innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="미세먼지 시간별 추이와 예측">${grid}${ticks}
+      ${nowX&&f10.length+f25.length?`<line x1="${nowX}" x2="${nowX}" y1="${Tp}" y2="${H-B}" stroke="${cssv("--sub")}" stroke-dasharray="2 4"/>`:""}
+      ${line(a10,x,y,cssv("--accent"))}${line(a25,x,y,cssv("--g3"))}${line(f10,x,y,cssv("--accent"),true)}${line(f25,x,y,cssv("--g3"),true)}</svg>`;
+    const m=p.predictions;
+    $("fit").textContent=m.pm10?`PM10 변화율 ${m.pm10.slope_per_hour>0?"+":""}${m.pm10.slope_per_hour}㎍/㎥ per 시간 · R² ${m.pm10.r2} · 표본 ${p.points}시각`:`표본 ${p.points}시각`;
+    $("fcst").innerHTML=(m.pm10?m.pm10.forecast:[]).map((f,i)=>`<div>${f.time.slice(5,16)}<b>PM10 ${f.value}</b>${m.pm25?`PM2.5 ${m.pm25.forecast[i].value}`:""}</div>`).join("");
+  }catch(e){$("chart").innerHTML=`<div class="msg err">${esc(e.message)}</div>`}
+}
+$("reload").onclick=()=>{load();loadTrend()};$("sido").onchange=()=>{load();loadTrend()};load();loadTrend();
 </script>
 </body>
 </html>
