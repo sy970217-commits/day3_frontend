@@ -3,47 +3,80 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>제주 마켓</title>
-<link rel="stylesheet" href="style.css">
+<title>미세먼지 현황</title>
+<style>
+  :root{--bg:#f2f6fb;--card:#fff;--text:#16202c;--sub:#667587;--line:#e3e9f0;
+    --g1:#1a9d57;--g2:#c98a0b;--g3:#e0661f;--g4:#cf2234;--g0:#8a94a0;--accent:#2563eb}
+  @media (prefers-color-scheme:dark){:root{--bg:#0f1620;--card:#18222f;--text:#e8eef5;--sub:#93a3b6;--line:#26323f;
+    --g1:#34c77b;--g2:#e5b23a;--g3:#f08a4b;--g4:#ff5b6b;--g0:#6d7a89;--accent:#6ea0ff}}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,"Malgun Gothic",sans-serif}
+  .wrap{max-width:960px;margin:0 auto;padding:0 16px 40px}
+  header{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:20px 0;flex-wrap:wrap}
+  h1{margin:0;font-size:22px} h1 small{display:block;font-size:12px;font-weight:400;color:var(--sub);margin-top:2px}
+  .ctl{display:flex;gap:8px}
+  select,button{font:inherit;padding:9px 14px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--text)}
+  button{background:var(--accent);border-color:var(--accent);color:#fff;cursor:pointer}
+  .hero{background:var(--card);border-radius:20px;padding:24px;display:grid;grid-template-columns:1fr 1fr;gap:16px;border:1px solid var(--line)}
+  .big{border-radius:16px;padding:18px;border:2px solid var(--c,var(--g0))}
+  .big .lb{font-size:13px;color:var(--sub)} .big .v{font-size:44px;font-weight:700;line-height:1.1;margin:6px 0}
+  .big .v small{font-size:14px;font-weight:400;color:var(--sub)} .badge{display:inline-block;padding:3px 12px;border-radius:99px;color:#fff;font-size:13px;background:var(--c,var(--g0))}
+  .meta{margin:14px 2px 10px;display:flex;justify-content:space-between;color:var(--sub);font-size:13px;gap:8px;flex-wrap:wrap}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+  .card{background:var(--card);border:1px solid var(--line);border-left:6px solid var(--c,var(--g0));border-radius:14px;padding:14px}
+  .card h3{margin:0;font-size:16px} .t{font-size:12px;color:var(--sub);margin:2px 0 10px}
+  .r{display:flex;justify-content:space-between;align-items:center;font-size:14px;padding:3px 0}
+  .r b{font-weight:600} .mini{font-size:11px;padding:1px 8px;border-radius:99px;color:#fff;margin-left:6px;background:var(--c,var(--g0))}
+  .g1{--c:var(--g1)}.g2{--c:var(--g2)}.g3{--c:var(--g3)}.g4{--c:var(--g4)}.g0{--c:var(--g0)}
+  .msg{padding:30px;text-align:center;color:var(--sub);grid-column:1/-1}.err{color:var(--g4)}
+  footer{margin-top:28px;font-size:12px;color:var(--sub);text-align:center}
+  @media (max-width:560px){.hero{grid-template-columns:1fr}.big .v{font-size:36px}}
+</style>
 </head>
 <body>
-<header class="top">
-  <div class="top-in">
-    <div class="brand">🍊 <span>제주 마켓</span></div>
-    <button class="cart-btn" id="openCart" aria-label="장바구니 열기">
-      🛒 <span class="cart-label">장바구니</span>
-      <span class="badge" id="badge">0</span>
-    </button>
-  </div>
-</header>
-
-<section class="hero">
-  <h1>제주의 맛을 집에서</h1>
-  <p>산지 직송 감귤부터 흑돼지까지, 담기만 하세요.</p>
-</section>
-
-<main class="wrap">
-  <div id="status" class="status" hidden></div>
+<div class="wrap">
+  <header>
+    <h1>🌫️ 미세먼지 현황<small>한국환경공단 에어코리아 · 실시간 측정소 데이터</small></h1>
+    <div class="ctl"><select id="sido" aria-label="시도 선택"></select><button id="reload">새로고침</button></div>
+  </header>
+  <section class="hero" id="hero"></section>
+  <div class="meta"><span id="count"></span><span id="updated"></span></div>
   <div class="grid" id="grid"></div>
-</main>
-
-<div class="overlay" id="overlay"></div>
-<aside class="drawer" id="drawer" aria-hidden="true">
-  <div class="drawer-head">
-    <h2>🛒 내 장바구니</h2>
-    <button class="x" id="closeCart" aria-label="닫기">✕</button>
-  </div>
-  <div class="drawer-body" id="cartBody"></div>
-  <div class="drawer-foot">
-    <div class="sum"><span>합계</span><b id="total">0원</b></div>
-    <button class="order" id="orderBtn">주문하기</button>
-    <button class="clear" id="clearBtn">비우기</button>
-  </div>
-</aside>
-
-<div class="toast" id="toast"></div>
-
+  <footer>데이터 출처: 공공데이터포털 한국환경공단_에어코리아_대기오염정보</footer>
+</div>
 <script src="config.js"></script>
-<script src="app.js"></script>
+<script>
+const SIDOS=["제주","서울","부산","대구","인천","광주","대전","울산","경기","강원","충북","충남","전북","전남","경북","경남","세종"];
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"-").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const TH={pm10:[30,80,150],pm25:[15,35,75]};
+const NAMES=["좋음","보통","나쁨","매우나쁨"];
+function grade(kind,v){const n=parseFloat(v);if(isNaN(n))return 0;const t=TH[kind];return n<=t[0]?1:n<=t[1]?2:n<=t[2]?3:4}
+const gname=g=>g?NAMES[g-1]:"정보없음";
+const avg=a=>{const n=a.map(parseFloat).filter(x=>!isNaN(x));return n.length?Math.round(n.reduce((x,y)=>x+y)/n.length):null};
+$("sido").innerHTML=SIDOS.map(s=>`<option>${s}</option>`).join("");
+
+function big(label,kind,v){const g=v==null?0:grade(kind,v);
+  return `<div class="big g${g}"><div class="lb">${label}</div><div class="v">${v??"-"}<small> ㎍/㎥</small></div><span class="badge">${gname(g)}</span></div>`}
+
+async function load(){
+  $("grid").innerHTML='<div class="msg">불러오는 중...</div>';
+  try{
+    const r=await fetch(`${window.API_BASE}/air?sido=${encodeURIComponent($("sido").value)}`);
+    if(!r.ok) throw new Error((await r.json().catch(()=>({}))).detail||r.status);
+    const d=await r.json();
+    $("hero").innerHTML=big(`${esc($("sido").value)} 평균 미세먼지 PM10`,"pm10",avg(d.map(i=>i.pm10)))+big(`${esc($("sido").value)} 평균 초미세먼지 PM2.5`,"pm25",avg(d.map(i=>i.pm25)));
+    $("count").textContent=`측정소 ${d.length}곳`;
+    $("updated").textContent=d[0]?`기준 시각 ${d[0].time}`:"";
+    $("grid").innerHTML=d.map(i=>{const g=Math.max(grade("pm10",i.pm10),grade("pm25",i.pm25));
+      return `<div class="card g${g}"><h3>${esc(i.station)}</h3><div class="t">${esc(i.time)}</div>
+      <div class="r"><span>미세 PM10</span><span><b>${esc(i.pm10)}</b><span class="mini g${grade("pm10",i.pm10)}">${gname(grade("pm10",i.pm10))}</span></span></div>
+      <div class="r"><span>초미세 PM2.5</span><span><b>${esc(i.pm25)}</b><span class="mini g${grade("pm25",i.pm25)}">${gname(grade("pm25",i.pm25))}</span></span></div>
+      <div class="r"><span>오존 O₃</span><b>${esc(i.o3)}</b></div>
+      <div class="r"><span>이산화질소 NO₂</span><b>${esc(i.no2)}</b></div></div>`}).join("")||'<div class="msg">데이터가 없습니다.</div>';
+  }catch(e){$("hero").innerHTML="";$("grid").innerHTML=`<div class="msg err">불러오지 못했습니다: ${esc(e.message)}<br><small>백엔드: ${esc(window.API_BASE)}</small></div>`}
+}
+$("reload").onclick=load;$("sido").onchange=load;load();
+</script>
 </body>
 </html>
